@@ -1,27 +1,21 @@
 package com.allangon4lves.agcast
 
-import androidx.compose.material3.*
 import android.content.Context
 import android.os.Bundle
 import android.util.Log
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.mediarouter.app.MediaRouteButton
-import com.google.android.exoplayer2.ExoPlayer
-import com.google.android.exoplayer2.MediaItem
-import com.google.android.exoplayer2.ui.PlayerView
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaLoadRequestData
 import com.google.android.gms.cast.framework.CastButtonFactory
@@ -37,43 +31,82 @@ class MainActivity : AppCompatActivity() {
         castContext = CastContext.getSharedInstance(this)
 
         setContent {
-            VideoScreen()
+            BrowserScreen()
         }
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
-    fun TopBar() {
+    fun TopBar(
+        url: String,
+        onUrlChange: (String) -> Unit,
+        onBack: () -> Unit
+    ) {
+
+        var text by remember { mutableStateOf(url) }
 
         TopAppBar(
             title = {
-                Text("AgCast")
+                TextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Digite o site...") }
+                )
+            },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Text("←")
+                }
             },
             actions = {
+
+                Button(onClick = {
+                    var finalUrl = text
+                    if (!finalUrl.startsWith("http")) {
+                        finalUrl = "https://$finalUrl"
+                    }
+                    onUrlChange(finalUrl)
+                }) {
+                    Text("Ir")
+                }
+
                 CastButton()
             }
         )
     }
 
+    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
-    fun VideoScreen() {
+    fun BrowserScreen() {
+
+        val sheetState = rememberModalBottomSheetState()
+        var showSheet by remember { mutableStateOf(false) }
+
+        var url by remember { mutableStateOf("https://www.google.com") }
+        var videoList by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
 
         val context = LocalContext.current
 
-        val exoPlayer = remember {
-            ExoPlayer.Builder(context).build().apply {
-                val mediaItem = MediaItem.fromUri(
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-                )
-                setMediaItem(mediaItem)
-                prepare()
-                playWhenReady = true
-            }
+        val webView = remember {
+            WebView(context)
         }
 
         Scaffold(
             topBar = {
-                TopBar()
+                TopBar(
+                    url = url,
+                    onUrlChange = { newUrl ->
+                        url = newUrl
+                        videoList = emptyList()
+                    },
+                    onBack = {
+                        if (webView.canGoBack()) {
+                            webView.goBack()
+                        }
+                    }
+                )
             }
         ) { padding ->
 
@@ -83,29 +116,186 @@ class MainActivity : AppCompatActivity() {
                     .padding(padding)
             ) {
 
-                // 🎬 Player
                 AndroidView(
                     factory = {
-                        PlayerView(it).apply {
-                            player = exoPlayer
+                        webView.apply {
+
+                            addJavascriptInterface(object {
+
+                                @android.webkit.JavascriptInterface
+                                fun onVideoDetected(url: String) {
+
+                                    if (videoList.none { it.url == url }) {
+
+                                        val type = when {
+                                            url.contains(".m3u8") -> "HLS"
+                                            url.contains(".mp4") -> "MP4"
+                                            else -> "VIDEO"
+                                        }
+
+                                        val title = url.substringAfterLast("/").take(30)
+
+                                        videoList = videoList + VideoItem(url, title, type)
+
+                                        Log.d("JS_VIDEO", url)
+
+                                        showSheet = true
+                                    }
+                                }
+
+                            }, "Android")
+
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+
+                            webViewClient = object : WebViewClient() {
+
+                                override fun onPageFinished(view: WebView?, url: String?) {
+                                    super.onPageFinished(view, url)
+
+                                    val js = """
+        (function() {
+
+            function sendVideo(src) {
+                if (src && src.startsWith("http")) {
+                    Android.onVideoDetected(src);
+                }
+            }
+
+            // 🎬 pega <video>
+            var videos = document.querySelectorAll("video");
+            videos.forEach(v => {
+                if (v.src) sendVideo(v.src);
+
+                v.addEventListener('play', function() {
+                    sendVideo(v.currentSrc);
+                });
+            });
+
+            // 🎥 intercepta source
+            var sources = document.querySelectorAll("source");
+            sources.forEach(s => {
+                if (s.src) sendVideo(s.src);
+            });
+
+        })();
+    """.trimIndent()
+
+                                    view?.evaluateJavascript(js, null)
+                                }
+
+                                override fun shouldInterceptRequest(
+                                    view: WebView?,
+                                    request: WebResourceRequest?
+                                ): android.webkit.WebResourceResponse? {
+
+                                    val url = request?.url.toString()
+
+                                    if (
+                                        url.contains(".mp4") ||
+                                        url.contains(".m3u8") ||
+                                        url.contains(".webm")
+                                    ) {
+
+                                        if (videoList.none { it.url == url }) {
+
+                                            val type = when {
+                                                url.contains(".m3u8") -> "HLS"
+                                                url.contains(".mp4") -> "MP4"
+                                                url.contains(".webm") -> "WEBM"
+                                                else -> "VIDEO"
+                                            }
+
+                                            val title = url.substringAfterLast("/").take(30)
+
+                                            videoList = videoList + VideoItem(url, title, type)
+
+                                            Log.d("VIDEO_DETECTADO", url)
+
+                                            showSheet = true // 🔥 abre automático
+                                        }
+                                    }
+
+                                    return super.shouldInterceptRequest(view, request)
+                                }
+
+                                override fun shouldOverrideUrlLoading(
+                                    view: WebView?,
+                                    request: WebResourceRequest?
+                                ): Boolean {
+                                    view?.loadUrl(request?.url.toString())
+                                    return true
+                                }
+                            }
+
+                            loadUrl(url)
                         }
+                    },
+                    update = {
+                        it.loadUrl(url)
                     },
                     modifier = Modifier.weight(1f)
                 )
 
-                // 🔘 Botão opcional (pode remover depois)
-                Button(
-                    onClick = {
-                        castVideo(
-                            context,
-                            "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Text("Transmitir para TV")
+                if (videoList.isNotEmpty()) {
+                    Button(
+                        onClick = { showSheet = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Text("🎬 Vídeos encontrados (${videoList.size})")
+                    }
+                }
+            }
+        }
+
+        // 🎬 BottomSheet PRO
+        if (showSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showSheet = false },
+                sheetState = sheetState
+            ) {
+
+                Text(
+                    "Vídeos detectados",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(16.dp)
+                )
+
+                videoList.forEach { video ->
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        onClick = {
+                            castVideo(context, video.url)
+                            showSheet = false
+                        }
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+
+                            Text(
+                                text = video.title,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Text(
+                                text = video.type,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Text(
+                                text = video.url.take(60),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -118,20 +308,13 @@ class MainActivity : AppCompatActivity() {
 
         AndroidView(
             factory = {
-
                 MediaRouteButton(it).apply {
-                    CastButtonFactory.setUpMediaRouteButton(
-                        context,
-                        this
-                    )
+                    CastButtonFactory.setUpMediaRouteButton(context, this)
                 }
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
+            modifier = Modifier.padding(end = 8.dp)
         )
     }
-
 
     fun castVideo(context: Context, videoUrl: String) {
 
@@ -163,5 +346,4 @@ class MainActivity : AppCompatActivity() {
 
         Log.d("CAST", "Enviando vídeo para TV")
     }
-
 }
