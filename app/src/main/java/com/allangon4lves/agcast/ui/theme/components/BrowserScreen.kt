@@ -33,12 +33,12 @@ import com.allangon4lves.agcast.data.VideoData
 import com.allangon4lves.agcast.cast.castVideo
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Movie
-import com.allangon4lves.agcast.viewmodels.BrowserViewModel
+import com.allangon4lves.agcast.viewmodels.BrowserScreenViewModel
 
 @SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BrowserScreen(viewModel: BrowserViewModel = viewModel()) {
+fun BrowserScreen(viewModel: BrowserScreenViewModel = viewModel()) {
     val context = LocalContext.current
     val webView = remember { WebView(context) }
 

@@ -6,7 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import com.allangon4lves.agcast.data.VideoData
 
-class BrowserViewModel : ViewModel() {
+class BrowserScreenViewModel : ViewModel() {
     var url by mutableStateOf("file:///android_asset/index.html")
         private set
 
