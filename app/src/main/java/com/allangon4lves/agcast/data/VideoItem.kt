@@ -1,4 +1,4 @@
-package com.allangon4lves.agcast
+package com.allangon4lves.agcast.data
 
 data class VideoItem(
     val url: String,
