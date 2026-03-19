@@ -1,4 +1,4 @@
-package com.allangon4lves.agcast.cast
+package com.allangon4lves.agcast.ui.theme.components
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -18,6 +18,6 @@ fun CastButton() {
                 CastButtonFactory.setUpMediaRouteButton(context, this)
             }
         },
-        modifier = Modifier.padding(end = 8.dp)
+        modifier = Modifier.padding(end = 4.dp)
     )
 }

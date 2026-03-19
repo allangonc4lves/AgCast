@@ -1,20 +1,27 @@
 package com.allangon4lves.agcast.ui.theme.components
 
+import android.annotation.SuppressLint
 import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -26,12 +33,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.allangon4lves.agcast.data.VideoItem
+import com.allangon4lves.agcast.data.VideoData
 import com.allangon4lves.agcast.cast.castVideo
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Movie
 
+@SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BrowserScreen() {
@@ -45,7 +56,15 @@ fun BrowserScreen() {
     var showSheet by remember { mutableStateOf(false) }
 
     var url by remember { mutableStateOf("file:///android_asset/index.html") }
-    var videoList by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
+    var videoList by remember { mutableStateOf<List<VideoData>>(emptyList()) }
+
+    BackHandler(enabled = webView.canGoBack()) {
+        webView.goBack()
+        val currentUrl = webView.url
+        if (currentUrl != null) {
+            url = currentUrl // atualiza a URL mostrada na TopBar
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -58,6 +77,8 @@ fun BrowserScreen() {
                 onBack = {
                     if (webView.canGoBack()) {
                         webView.goBack()
+                        videoList = emptyList()
+                        url = "teste"
                     }
                 }
             )
@@ -84,12 +105,13 @@ fun BrowserScreen() {
                                     val type = when {
                                         url.contains(".m3u8") -> "HLS"
                                         url.contains(".mp4") -> "MP4"
+                                        url.contains(".webm") -> "WEBM"
                                         else -> "VIDEO"
                                     }
 
                                     val title = url.substringAfterLast("/").take(30)
 
-                                    videoList = videoList + VideoItem(url, title, type)
+                                    videoList = videoList + VideoData(url, title, type)
 
                                     Log.d("JS_VIDEO", url)
 
@@ -164,7 +186,7 @@ fun BrowserScreen() {
 
                                         val title = url.substringAfterLast("/").take(30)
 
-                                        videoList = videoList + VideoItem(url, title, type)
+                                        videoList = videoList + VideoData(url, title, type)
 
                                         Log.d("VIDEO_DETECTADO", url)
 
@@ -198,9 +220,28 @@ fun BrowserScreen() {
                     onClick = { showSheet = true },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp)
+                        .padding(horizontal = 24.dp, vertical = 12.dp)
+                        .height(56.dp), // altura fixa
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF6200EE), // cor de fundo
+                        contentColor = Color.White          // cor do texto/ícone
+                    ),
+                    shape = RoundedCornerShape(12.dp), // cantos arredondados
+                    elevation = ButtonDefaults.buttonElevation(
+                        defaultElevation = 6.dp,
+                        pressedElevation = 10.dp
+                    )
                 ) {
-                    Text("🎬 Vídeos encontrados (${videoList.size})")
+                    Icon(
+                        imageVector = Icons.Filled.Movie,
+                        contentDescription = "Vídeos",
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = " Vídeos encontrados (${videoList.size})",
+                        style = MaterialTheme.typography.titleMedium
+                    )
                 }
             }
         }

@@ -65,4 +65,5 @@ dependencies {
     implementation("com.google.android.exoplayer:extension-cast:2.19.1")
     implementation("com.google.android.gms:play-services-cast-framework:21.4.0")
     implementation("androidx.mediarouter:mediarouter:1.6.0")
+    implementation("androidx.compose.material:material-icons-extended")
 }
