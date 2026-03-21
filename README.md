@@ -34,8 +34,8 @@ Este projeto é um aplicativo Android desenvolvido em **Kotlin** com **Jetpack C
 
 - `BrowserScreen.kt` → Composable principal com o `WebView` e UI
 - `BrowserViewModel.kt` → Gerencia estados (`url`, `videoList`, `showSheet`)
-- `VideoData.kt` → Data class para representar vídeos detectados
-- `TopBar.kt` → Componente de barra superior com campo de URL e botão de voltar
+- `VideoInfo.kt` → Data class para representar vídeos detectados
+- `TopBar.kt` → Componente de barra superior com funções para navagação
 
 ---
 
