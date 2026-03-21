@@ -91,6 +91,8 @@ fun BrowserScreen(browserScreenViewModel: BrowserScreenViewModel = viewModel()) 
                                     url.contains(".m3u8") -> "HLS"
                                     url.contains(".mp4") -> "MP4"
                                     url.contains(".webm") -> "WEBM"
+                                    url.contains(".ts") -> "HLS-SEGMENT"
+                                    url.contains(".mpd") -> "DASH"
                                     else -> "VIDEO"
                                 }
                                 val title = url.substringAfterLast("/").take(30)
@@ -100,33 +102,75 @@ fun BrowserScreen(browserScreenViewModel: BrowserScreenViewModel = viewModel()) 
 
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
+                        settings.javaScriptCanOpenWindowsAutomatically = true
+                        settings.setSupportMultipleWindows(true)
 
                         webViewClient = object : WebViewClient() {
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 super.onPageFinished(view, url)
                                 browserScreenViewModel.updateUrl(url ?: "")
 
-                                // 🔥 Injeção de JavaScript para detectar <video> e <source>
+                                // 🔥 Injeção de JavaScript para detectar <video>, <source>, iframes, fetch e XHR
                                 val js = """
-                                    (function() {
-                                        function sendVideo(src) {
-                                            if (src && src.startsWith("http")) {
-                                                Android.onVideoDetected(src);
-                                            }
+                        (function() {
+                            function sendVideo(src) {
+                                if (typeof url === "string" && 
+                                    (url.includes(".m3u8") || url.includes(".mp4") || url.includes(".webm") || 
+                                    url.includes(".ts") || url.includes(".mpd") || url.includes("videoplayback") || url.includes("mime=video/mp4"))) {
+                                    sendVideo(url);
+                                }
+                            }
+
+                            // Detecta <video> e <source>
+                            var videos = document.querySelectorAll("video");
+                            videos.forEach(v => {
+                                if (v.src) sendVideo(v.src);
+                                v.addEventListener('play', function() {
+                                    sendVideo(v.currentSrc);
+                                });
+                            });
+                            var sources = document.querySelectorAll("source");
+                            sources.forEach(s => {
+                                if (s.src) sendVideo(s.src);
+                            });
+
+                            // Detecta dentro de iframes
+                            var iframes = document.querySelectorAll("iframe");
+                            iframes.forEach(f => {
+                                try {
+                                    var doc = f.contentDocument || f.contentWindow.document;
+                                    var vids = doc.querySelectorAll("video, source");
+                                    vids.forEach(v => {
+                                        if (v.src) sendVideo(v.src);
+                                    });
+                                } catch(e) {}
+                            });
+
+                            // Intercepta fetch
+                            const originalFetch = window.fetch;
+                            window.fetch = function() {
+                                const response = originalFetch.apply(this, arguments);
+                                response.then(res => {
+                                    try {
+                                        const url = arguments[0];
+                                        if (typeof url === "string" && (url.includes(".m3u8") || url.includes(".mp4") || url.includes(".webm") || url.includes(".ts") || url.includes(".mpd"))) {
+                                            sendVideo(url);
                                         }
-                                        var videos = document.querySelectorAll("video");
-                                        videos.forEach(v => {
-                                            if (v.src) sendVideo(v.src);
-                                            v.addEventListener('play', function() {
-                                                sendVideo(v.currentSrc);
-                                            });
-                                        });
-                                        var sources = document.querySelectorAll("source");
-                                        sources.forEach(s => {
-                                            if (s.src) sendVideo(s.src);
-                                        });
-                                    })();
-                                """.trimIndent()
+                                    } catch(e) {}
+                                });
+                                return response;
+                            };
+
+                            // Intercepta XMLHttpRequest
+                            const originalOpen = XMLHttpRequest.prototype.open;
+                            XMLHttpRequest.prototype.open = function(method, url) {
+                                if (url && (url.includes(".m3u8") || url.includes(".mp4") || url.includes(".webm") || url.includes(".ts") || url.includes(".mpd"))) {
+                                    sendVideo(url);
+                                }
+                                return originalOpen.apply(this, arguments);
+                            };
+                        })();
+                    """.trimIndent()
 
                                 view?.evaluateJavascript(js, null)
                             }
@@ -136,11 +180,21 @@ fun BrowserScreen(browserScreenViewModel: BrowserScreenViewModel = viewModel()) 
                                 request: WebResourceRequest?
                             ): WebResourceResponse? {
                                 val reqUrl = request?.url.toString()
-                                if (reqUrl.contains(".mp4") || reqUrl.contains(".m3u8") || reqUrl.contains(".webm")) {
+                                if (
+                                    reqUrl.contains(".mp4") ||
+                                    reqUrl.contains(".m3u8") ||
+                                    reqUrl.contains(".webm") ||
+                                    reqUrl.contains(".ts") ||
+                                    reqUrl.contains(".mpd") ||
+                                    reqUrl.contains("videoplayback") || // 🔥 captura YouTube
+                                    reqUrl.contains("mime=video/mp4")   // 🔥 captura streams sem extensão
+                                ) {
                                     val type = when {
                                         reqUrl.contains(".m3u8") -> "HLS"
-                                        reqUrl.contains(".mp4") -> "MP4"
+                                        reqUrl.contains(".mp4") || reqUrl.contains("videoplayback") || reqUrl.contains("mime=video/mp4") -> "MP4"
                                         reqUrl.contains(".webm") -> "WEBM"
+                                        reqUrl.contains(".ts") -> "HLS-SEGMENT"
+                                        reqUrl.contains(".mpd") -> "DASH"
                                         else -> "VIDEO"
                                     }
                                     val title = reqUrl.substringAfterLast("/").take(30)
